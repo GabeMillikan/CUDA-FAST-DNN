@@ -77,7 +77,14 @@
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <CudaCompile Include="kernel.cu" />
+    <CudaCompile Include="main.cu" />
+    <CudaCompile Include="network.cu" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="activation.cuh" />
+    <ClInclude Include="float_random.cuh" />
+    <ClInclude Include="includes.cuh" />
+    <ClInclude Include="network.cuh" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

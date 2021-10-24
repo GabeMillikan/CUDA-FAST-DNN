@@ -1,3 +1,33 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="headers">
+      <UniqueIdentifier>{50e8bc0e-5cda-4ea6-8e80-1bedab8aec77}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="sources">
+      <UniqueIdentifier>{4e134d6a-75f8-47e4-9201-1bccf34be89a}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="includes.cuh">
+      <Filter>headers</Filter>
+    </ClInclude>
+    <ClInclude Include="activation.cuh">
+      <Filter>headers</Filter>
+    </ClInclude>
+    <ClInclude Include="network.cuh">
+      <Filter>headers</Filter>
+    </ClInclude>
+    <ClInclude Include="float_random.cuh">
+      <Filter>headers</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="main.cu">
+      <Filter>sources</Filter>
+    </CudaCompile>
+    <CudaCompile Include="network.cu">
+      <Filter>sources</Filter>
+    </CudaCompile>
+  </ItemGroup>
 </Project>

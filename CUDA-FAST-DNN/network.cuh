@@ -4,10 +4,6 @@
 #include "activation.cuh"
 
 namespace DeepNeuralNetwork {
-	namespace Utils {
-
-	}
-
 	struct Layer {
 		size_t height;
 		Activation::Activator activator;
@@ -20,7 +16,9 @@ namespace DeepNeuralNetwork {
 		size_t inputHeight;
 		size_t* shape;
 		Activation::Activator* activators;
+		Network* this_gpuCopy;
 
+		float* inputs;
 		float*** weights;
 		float** biases;
 
@@ -40,4 +38,8 @@ namespace DeepNeuralNetwork {
 
 		~Network();
 	};
+
+	namespace Utils {
+		__global__ void feedForward(Network* nn);
+	}
 }
