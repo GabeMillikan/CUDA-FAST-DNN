@@ -29,5 +29,8 @@
     <CudaCompile Include="network.cu">
       <Filter>sources</Filter>
     </CudaCompile>
+    <CudaCompile Include="activation.cu">
+      <Filter>sources</Filter>
+    </CudaCompile>
   </ItemGroup>
 </Project>

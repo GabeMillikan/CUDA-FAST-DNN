@@ -10,69 +10,66 @@ DNN::Layer::Layer(size_t height, Activation::Activator activator)
 DNN::Network::Network(
 	std::initializer_list<Layer> layers,
 	size_t inputHeight,
+	size_t trainBatchSize,
 	float learningRate,
 	float*** weights,
 	float** biases
 )
 {
+	int alloc_error = 0;
+
 	this->inputHeight = inputHeight;
+	this->trainBatchSize = trainBatchSize;
+	this->tallestLayerSize = 0; // set during layer loop
 
 	this->layerCount = layers.size();
 
-	//this->inputs = new float[this->inputHeight];
-	cudaMallocManaged(&this->inputs, this->inputHeight * sizeof(float));
-	//[AUTOCOMMENT-allocations]printf("allocated %p\n", this->inputs);
+	//this->shape[layer]
+	//this->activators[layer]
+	alloc_error |= (int)cudaMallocManaged(&this->shape, this->layerCount * sizeof(size_t));
+	alloc_error |= (int)cudaMallocManaged(&this->activators, this->layerCount * sizeof(Activation::Activator));
 
-	//this->shape = new size_t[this->layerCount];
-	//this->activators = new Activation::Activator[this->layerCount];
-	cudaMallocManaged(&this->shape, this->layerCount * sizeof(size_t));
-	//[AUTOCOMMENT-allocations]printf("allocated %p\n", this->shape);
-	cudaMallocManaged(&this->activators, this->layerCount * sizeof(Activation::Activator));
-	//[AUTOCOMMENT-allocations]printf("allocated %p\n", this->activators);
+	//this->inputs[batch][input_idx]
+	//this->unactivatedOutputs[batch][layer][node]
+	//this->activatedOutputs[batch][layer][node]
+	alloc_error |= (int)cudaMallocManaged(&this->inputs, this->trainBatchSize * sizeof(float*));
+	alloc_error |= (int)cudaMallocManaged(&this->unactivatedOutputs, this->trainBatchSize * sizeof(float**));
+	alloc_error |= (int)cudaMallocManaged(&this->activatedOutputs, this->trainBatchSize * sizeof(float**));
+	for (size_t batch = 0; batch < this->trainBatchSize; batch++)
+	{
+		alloc_error |= (int)cudaMallocManaged(this->inputs + batch, this->inputHeight * sizeof(float));
+		alloc_error |= (int)cudaMallocManaged(this->unactivatedOutputs + batch, this->layerCount * sizeof(float*));
+		alloc_error |= (int)cudaMallocManaged(this->activatedOutputs + batch, this->layerCount * sizeof(float*));
 
-	//this->unactivatedOutputs = new float* [this->layerCount];
-	//this->activatedOutputs = new float* [this->layerCount];
-	cudaMallocManaged(&this->unactivatedOutputs, this->layerCount * sizeof(float*));
-	//[AUTOCOMMENT-allocations]printf("allocated %p\n", this->unactivatedOutputs);
-	cudaMallocManaged(&this->activatedOutputs, this->layerCount * sizeof(float*));
-	//[AUTOCOMMENT-allocations]printf("allocated %p\n", this->activatedOutputs);
+		for (size_t i = 0; i < this->layerCount; i++)
+		{
+			const Layer* layer = layers.begin() + i;
+			alloc_error |= (int)cudaMallocManaged(this->unactivatedOutputs[batch] + i, layer->height * sizeof(float*));
+			alloc_error |= (int)cudaMallocManaged(this->activatedOutputs[batch] + i, layer->height * sizeof(float*));
+		}
+	}
 
-	//this->weights = new float** [this->layerCount];
-	//this->biases = new float* [this->layerCount];
-	cudaMallocManaged(&this->weights, this->layerCount * sizeof(float**));
-	//[AUTOCOMMENT-allocations]printf("allocated %p\n", this->weights);
-	cudaMallocManaged(&this->biases, this->layerCount * sizeof(float*));
-	//[AUTOCOMMENT-allocations]printf("allocated %p\n", this->biases);
-
+	//this->weights[layer][node][prev_node]
+	//this->biases[layer][node]
+	alloc_error |= (int)cudaMallocManaged(&this->weights, this->layerCount * sizeof(float**));
+	alloc_error |= (int)cudaMallocManaged(&this->biases, this->layerCount * sizeof(float*));
 	size_t previousLayerHeight = inputHeight;
 	for (size_t i = 0; i < this->layerCount; i++)
 	{
 		const Layer* layer = layers.begin() + i;
 		this->shape[i] = layer->height;
 		this->activators[i] = layer->activator;
+		this->tallestLayerSize = layer->height > this->tallestLayerSize ? layer->height : this->tallestLayerSize;
 
-		//this->unactivatedOutputs[i] = new float[layer->height];
-		//this->activatedOutputs[i] = new float[layer->height];
-		cudaMallocManaged(this->unactivatedOutputs + i, layer->height * sizeof(float));
-		//[AUTOCOMMENT-allocations]printf("allocated %p\n", this->unactivatedOutputs[i]);
-		cudaMallocManaged(this->activatedOutputs + i, layer->height * sizeof(float));
-		//[AUTOCOMMENT-allocations]printf("allocated %p\n", this->activatedOutputs[i]);
-
-		//this->weights[i] = new float* [layer->height];
-		//this->biases[i] = new float[layer->height];
-		cudaMallocManaged(this->weights + i, layer->height * sizeof(float*));
-		//[AUTOCOMMENT-allocations]printf("allocated %p\n", this->weights[i]);
-		cudaMallocManaged(this->biases + i, layer->height * sizeof(float));
-		//[AUTOCOMMENT-allocations]printf("allocated %p\n", this->biases[i]);
+		alloc_error |= (int)cudaMallocManaged(this->weights + i, layer->height * sizeof(float*));
+		alloc_error |= (int)cudaMallocManaged(this->biases + i, layer->height * sizeof(float));
 
 		for (size_t j = 0; j < layer->height; j++)
 		{
-			//this->weights[i][j] = new float[previousLayerHeight];
-			cudaMallocManaged(this->weights[i] + j, previousLayerHeight * sizeof(float));
-			//[AUTOCOMMENT-allocations]printf("allocated %p\n", this->weights[i][j]);
+			alloc_error |= (int)cudaMallocManaged(this->weights[i] + j, previousLayerHeight * sizeof(float));
 
 			for (size_t k = 0; k < previousLayerHeight; k++)
-				this->weights[i][j][k] = weights ? weights[i][j][k] : randf<-1, 1>();
+				this->weights[i][j][k] = weights ? weights[i][j][k] : randf<-1, 1>() / layer->height;
 
 			this->biases[i][j] = biases ? biases[i][j] : randf<-1, 1>();
 		}
@@ -80,81 +77,107 @@ DNN::Network::Network(
 		previousLayerHeight = layer->height;
 	}
 
-	this->networkOutputs = this->activatedOutputs[this->layerCount - 1];
-
-	//this->this_gpuCopy = (Network*)malloc(sizeof(Network));
-	cudaMallocManaged(&this->this_gpuCopy, sizeof(Network));
-	//[AUTOCOMMENT-allocations]printf("allocated %p\n", this->this_gpuCopy);
-
+	//this->this_gpuCopy = this (but allocated on the gpu)
+	alloc_error |= (int)cudaMallocManaged(&this->this_gpuCopy, sizeof(Network));
 	*this->this_gpuCopy = *this;
+
+	this->predictionResult = this->activatedOutputs[0][this->layerCount - 1];
+
+	if (alloc_error)
+	{
+		printf("There was at least one error while allocating memory. The bit mask of all errors is: %d\n", alloc_error);
+		exit(1);
+	}
 }
 
-void DNN::Network::feedForward(float* inputs)
+void DNN::Network::predict(float* inputs)
 {
-	memcpy(this->inputs, inputs, this->inputHeight * sizeof(float));
-	DNN::Utils::feedForward<<<1, 1>>>(this->this_gpuCopy);
+	memcpy(this->inputs[0], inputs, this->inputHeight * sizeof(float));
+	DNN::Utils::feedForward<<<1, this->tallestLayerSize>>>(this->this_gpuCopy);
 	cudaDeviceSynchronize();
 }
 
 DNN::Network::~Network()
 {
-	for (size_t i = 0; i < this->layerCount; i++)
+	//this->this_gpuCopy = this (but allocated on the gpu)
+	cudaFree(this->this_gpuCopy);
+
+	//this->biases[layer][node]
+	//this->weights[layer][node][prev_node]
+	for (size_t layer = 0; layer < this->layerCount; layer++)
 	{
-		for (size_t j = 0; j < this->shape[i]; j++)
+		for (size_t node = 0; node < this->shape[node]; node++)
 		{
-			//delete[] this->weights[i][j];
-			//[AUTOCOMMENT-allocations]printf("freeing %p\n", this->weights[i][j]);
-			cudaFree(this->weights[i][j]);
+			cudaFree(this->weights[layer][node]);
 		}
-
-		//delete[] this->weights[i];
-		//delete[] this->biases[i];
-		//[AUTOCOMMENT-allocations]printf("freeing %p\n", this->weights[i]);
-		cudaFree(this->weights[i]);
-		//[AUTOCOMMENT-allocations]printf("freeing %p\n", this->biases[i]);
-		cudaFree(this->biases[i]);
-
-		//delete[] this->unactivatedOutputs[i];
-		//delete[] this->activatedOutputs[i];
-		//[AUTOCOMMENT-allocations]printf("freeing %p\n", this->unactivatedOutputs[i]);
-		cudaFree(this->unactivatedOutputs[i]);
-		//[AUTOCOMMENT-allocations]printf("freeing %p\n", this->activatedOutputs[i]);
-		cudaFree(this->activatedOutputs[i]);
+		cudaFree(this->biases[layer]);
+		cudaFree(this->weights[layer]);
 	}
-
-	//delete[] this->biases;
-	//delete[] this->weights;
-	//[AUTOCOMMENT-allocations]printf("freeing %p\n", this->weights);
-	cudaFree(this->weights);
-	//[AUTOCOMMENT-allocations]printf("freeing %p\n", this->biases);
 	cudaFree(this->biases);
+	cudaFree(this->weights);
 
-	//delete[] this->unactivatedOutputs;
-	//delete[] this->activatedOutputs
-	//[AUTOCOMMENT-allocations]printf("freeing %p\n", this->unactivatedOutputs);
-	cudaFree(this->unactivatedOutputs);
-	//[AUTOCOMMENT-allocations]printf("freeing %p\n", this->activatedOutputs);
+	//this->activatedOutputs[batch][layer][node]
+	//this->unactivatedOutputs[batch][layer][node]
+	//this->inputs[batch][input_idx]
+	for (size_t batch = 0; batch < this->trainBatchSize; batch++)
+	{
+		for (size_t layer = 0; layer < this->layerCount; layer++)
+		{
+			cudaFree(this->activatedOutputs[batch][layer]);
+			cudaFree(this->unactivatedOutputs[batch][layer]);
+		}
+		cudaFree(this->activatedOutputs[batch]);
+		cudaFree(this->unactivatedOutputs[batch]);
+		cudaFree(this->inputs[batch]);
+	}
 	cudaFree(this->activatedOutputs);
-
-	//delete[] this->inputs;
-	//[AUTOCOMMENT-allocations]printf("freeing %p\n", this->inputs);
+	cudaFree(this->unactivatedOutputs);
 	cudaFree(this->inputs);
 
-	//delete[] this->shape;
-	//delete[] this->activators;
-	//[AUTOCOMMENT-allocations]printf("freeing %p\n", this->shape);
-	cudaFree(this->shape);
-	//[AUTOCOMMENT-allocations]printf("freeing %p\n", this->activators);
+	//this->activators[layer]
+	//this->shape[layer]
 	cudaFree(this->activators);
-
-	//free(gpu_shallowCopy);
-	//[AUTOCOMMENT-allocations]printf("freeing %p\n", this->gpu_shallowCopy);
-	cudaFree(this->this_gpuCopy);
+	cudaFree(this->shape);
 }
-
 
 __global__ void DNN::Utils::feedForward(Network* nn)
 {
-	printf("input while feeding: %.3f\n", nn->inputs[0]);
-	nn->biases[0][0] = 69.420f;
+	const size_t& batch = blockIdx.x;
+	const size_t& node = threadIdx.x;
+	size_t layer = 0;
+
+	while (layer < nn->layerCount)
+	{
+		// perform feedforward
+		if (node < nn->shape[layer])
+		{
+			const Activation::Activator& activator = nn->activators[layer];
+			
+			float* unactivatedOutput = nn->unactivatedOutputs[batch][layer] + node;
+			*unactivatedOutput = 0;
+
+			if (layer == 0)
+			{
+				for (size_t j = 0; j < nn->inputHeight; j++)
+				{
+					*unactivatedOutput += nn->inputs[batch][j] * nn->weights[0][node][j] + nn->biases[0][node];
+				}
+			}
+			else
+			{
+				const size_t& prevLayer = layer - 1;
+				const size_t& prevLayerHeight = nn->shape[prevLayer];
+				for (size_t j = 0; j < prevLayerHeight; j++)
+				{
+					*unactivatedOutput += nn->activatedOutputs[batch][prevLayer][j] * nn->weights[layer][node][j] + nn->biases[layer][node];
+				}
+			}
+
+			Activation::activate(activator, *unactivatedOutput, nn->activatedOutputs[batch][layer] + node);
+		}
+		
+		// sync everything up and move on to next layer
+		__syncthreads();
+		layer++;
+	}
 }

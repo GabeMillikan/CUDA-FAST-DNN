@@ -6,5 +6,5 @@ float randf()
 {
     static std::default_random_engine engine;
     static std::uniform_real_distribution<> distribution(min, max);
-    return distribution(engine);
+    return (float)distribution(engine);
 }
