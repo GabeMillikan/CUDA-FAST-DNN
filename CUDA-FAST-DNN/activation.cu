@@ -17,19 +17,20 @@ __device__ void Activation::activate(const Activator& activator, const float& in
 	}
 }
 
-/*
-double Activation::differentiate(const Activator& activator, const double& input)
+void Activation::differentiate(const Activator& activator, const float& in, float* out)
 {
 	switch (activator)
 	{
 	default:
 	case Activator::Linear:
-		return 1;
+		*out = in;
+		break;
 	case Activator::ReLu:
-		return input <= 0 ? 0 : 1;
+		*out = in <= 0 ? 0 : 1;
+		break;
 	case Activator::Sigmoid:
-		double sigmoid = activate(activator, input);
-		return sigmoid * (1 - sigmoid);
+		activate(activator, in, out);
+		*out *= (1 - *out);
+		break;
 	}
 }
-*/

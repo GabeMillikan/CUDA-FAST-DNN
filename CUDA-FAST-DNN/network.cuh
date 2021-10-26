@@ -8,6 +8,8 @@ namespace DeepNeuralNetwork {
 
 	namespace Utils {
 		__global__ void feedForward(Network* nn);
+		__global__ void backPropRecord(Network* nn);
+		__global__ void backPropUpdate(Network* nn);
 	}
 
 	struct Layer {
@@ -20,16 +22,19 @@ namespace DeepNeuralNetwork {
 	class Network {
 		size_t layerCount;
 		size_t inputHeight;
+		size_t outputHeight;
 		size_t tallestLayerSize;
 		size_t* shape;
 		Activation::Activator* activators;
 		Network* this_gpuCopy;
 
+		size_t trainBatchSize;
 		float** inputs;
+		float** expectedOutputs;
+
 		float*** weights;
 		float** biases;
 
-		size_t trainBatchSize;
 		float*** unactivatedOutputs;
 		float*** activatedOutputs;
 	
@@ -46,9 +51,12 @@ namespace DeepNeuralNetwork {
 		);
 
 		void predict(float* inputs);
+		void train(float** inputs, float** outputs);
 
 		~Network();
 
 		friend __global__ void Utils::feedForward(Network*);
+		friend __global__ void Utils::backPropRecord(Network*);
+		friend __global__ void Utils::backPropUpdate(Network*);
 	};
 }

@@ -12,5 +12,5 @@ namespace Activation
 	};
 
 	__device__ void activate(const Activator& activator, const float& in, float* out);
-	//__host__ __device__ inline void differentiate(const Activator& activator, const float& in, float* out);
+	__device__ void differentiate(const Activator& activator, const float& in, float* out);
 }
