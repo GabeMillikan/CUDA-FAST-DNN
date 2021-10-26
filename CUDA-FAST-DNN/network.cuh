@@ -20,6 +20,7 @@ namespace DeepNeuralNetwork {
 	};
 
 	class Network {
+		float learningRate;
 		size_t layerCount;
 		size_t inputHeight;
 		size_t outputHeight;
@@ -52,6 +53,7 @@ namespace DeepNeuralNetwork {
 
 		void predict(float* inputs);
 		void train(float** inputs, float** outputs);
+		void summary(bool showParameterValues = true);
 
 		~Network();
 

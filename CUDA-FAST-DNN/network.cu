@@ -99,7 +99,7 @@ DNN::Network::Network(
 void DNN::Network::predict(float* inputs)
 {
 	memcpy(this->inputs[0], inputs, this->inputHeight * sizeof(float));
-	DNN::Utils::feedForward<<<1, this->tallestLayerSize>>>(this->this_gpuCopy);
+	DNN::Utils::feedForward<<<1u, (unsigned int)this->tallestLayerSize>>>(this->this_gpuCopy);
 	cudaDeviceSynchronize();
 }
 
@@ -111,14 +111,54 @@ void DNN::Network::train(float** inputs, float** outputs)
 		memcpy(this->expectedOutputs[batch], outputs[batch], this->outputHeight * sizeof(float));
 	}
 
-	DNN::Utils::feedForward<<<this->trainBatchSize, this->tallestLayerSize>>>(this->this_gpuCopy);
+	DNN::Utils::feedForward<<<(unsigned int)this->trainBatchSize, (unsigned int)this->tallestLayerSize>>>(this->this_gpuCopy);
 	cudaDeviceSynchronize();
 
-	DNN::Utils::backPropRecord<<<this->trainBatchSize, this->tallestLayerSize>>>(this->this_gpuCopy);
+	DNN::Utils::backPropRecord<<<(unsigned int)this->trainBatchSize, (unsigned int)this->tallestLayerSize>>>(this->this_gpuCopy);
 	cudaDeviceSynchronize();
 	
-	DNN::Utils::backPropUpdate<<<this->layerCount, this->tallestLayerSize>>>(this->this_gpuCopy);
+	DNN::Utils::backPropUpdate<<<(unsigned int)this->layerCount, (unsigned int)this->tallestLayerSize>>>(this->this_gpuCopy);
 	cudaDeviceSynchronize();
+}
+
+void DeepNeuralNetwork::Network::summary(bool showParameterValues)
+{
+	printf("================ NETWORK SUMMARY ================\n");
+	printf("    Inputs: %5d             Outputs: %5d\n", (int)this->inputHeight, (int)this->outputHeight);
+	printf("    Layers: %5d          Batch Size: %5d\n", (int)this->layerCount, (int)this->trainBatchSize);
+	printf("            Learning Rate: %.4g\n", this->learningRate);
+	printf("================     LAYERS     =================\n");
+	for (size_t layer = 0; layer < this->layerCount; layer++)
+	{
+		const Activation::Activator& activator = this->activators[layer];
+		const size_t& height = this->shape[layer];
+
+		printf(" %4d.) %d neuron(s), %s activation\n", (int)layer, (int)height, Activation::stringifyActivator(activator));
+		if (showParameterValues)
+		{
+			printf("      Biases: [");
+			for (size_t node = 0; node < height; node++)
+			{
+				printf(node == 0 ? "%.3f" : ", %.3f", this->biases[layer][node]);
+			}
+
+			const size_t& prevHeight = layer == 0 ? this->inputHeight : this->shape[layer - 1];
+			printf("]\n      Weights: \n");
+			for (size_t node = 0; node < height; node++)
+			{
+				printf("          [");
+				for (size_t j = 0; j < prevHeight; j++)
+				{
+					printf(j == 0 ? "%.3f" : ", %.3f", this->weights[layer][node][j]);
+				}
+				printf("]\n");
+			}
+			printf("      ]\n");
+		}
+	}
+	printf("=================================================\n");
+
+	printf("\n\n");
 }
 
 DNN::Network::~Network()
@@ -172,6 +212,7 @@ __global__ void DNN::Utils::feedForward(Network* nn)
 	const size_t& batch = blockIdx.x;
 	const size_t& node = threadIdx.x;
 	size_t layer = 0;
+	printf("FF thread <%d, %d>\n", (int)batch, (int)node);
 
 	while (layer < nn->layerCount)
 	{
@@ -181,13 +222,15 @@ __global__ void DNN::Utils::feedForward(Network* nn)
 			const Activation::Activator& activator = nn->activators[layer];
 			
 			float* unactivatedOutput = nn->unactivatedOutputs[batch][layer] + node;
-			*unactivatedOutput = 0;
+			*unactivatedOutput = nn->biases[layer][node];
+			printf("unactivatedOutput[%d][%d][%d] = %.3f\n", (int)batch, (int)layer, (int)node, *unactivatedOutput);
 
 			if (layer == 0)
 			{
 				for (size_t j = 0; j < nn->inputHeight; j++)
 				{
-					*unactivatedOutput += nn->inputs[batch][j] * nn->weights[0][node][j] + nn->biases[0][node];
+					*unactivatedOutput += nn->inputs[batch][j] * nn->weights[0][node][j];
+					printf("unactivatedOutput[%d][%d][%d] += %.3f * %.3f\n", (int)batch, (int)layer, (int)node, nn->inputs[batch][j], nn->weights[0][node][j]);
 				}
 			}
 			else
@@ -196,11 +239,14 @@ __global__ void DNN::Utils::feedForward(Network* nn)
 				const size_t& prevLayerHeight = nn->shape[prevLayer];
 				for (size_t j = 0; j < prevLayerHeight; j++)
 				{
-					*unactivatedOutput += nn->activatedOutputs[batch][prevLayer][j] * nn->weights[layer][node][j] + nn->biases[layer][node];
+					*unactivatedOutput += nn->activatedOutputs[batch][prevLayer][j] * nn->weights[layer][node][j];
+					printf("unactivatedOutput[%d][%d][%d] += %.3f * %.3f\n", (int)batch, (int)layer, (int)node, nn->activatedOutputs[batch][prevLayer][j], nn->weights[0][node][j]);
 				}
 			}
 
+			printf("unactivatedOutput[%d][%d][%d] ==> %.3f\n", (int)batch, (int)layer, (int)node, *unactivatedOutput);
 			Activation::activate(activator, *unactivatedOutput, nn->activatedOutputs[batch][layer] + node);
+			printf("activatedOutputs[%d][%d][%d] = %.3f\n", (int)batch, (int)layer, (int)node, nn->activatedOutputs[batch][layer][node]);
 		}
 		
 		// sync everything up and move on to next layer
@@ -230,22 +276,22 @@ __global__ void DNN::Utils::backPropRecord(Network* nn)
 
 	const size_t& batch = blockIdx.x;
 	const size_t& node = threadIdx.x;
+	printf("BPR thread <%d, %d>\n", (int)batch, (int)node);
 
 	// calculate dc/do for the very last layer
 	size_t layer = nn->layerCount - 1;
 	if (node < nn->outputHeight)
 	{
 		float* o_Xi = nn->unactivatedOutputs[batch][layer] + node;
-		const float err = *o_Xi - nn->expectedOutputs[batch][node];
-
 		Activation::differentiate(nn->activators[layer], *o_Xi, o_Xi);
-		*o_Xi *= 2.f * err / nn->outputHeight;
+		*o_Xi *= 2.f * (nn->activatedOutputs[batch][layer][node] - nn->expectedOutputs[batch][node]) / nn->outputHeight;
+		printf("dc/do batch,layer,node=%d,%d,%d = %.3f\n", (int)batch, (int)layer, (int)node, *o_Xi);
 	}
 
 	// now for every other layer
 	--layer;
 	size_t layerHeight = nn->shape[layer], followingLayerHeight = nn->outputHeight, j = 0;
-	while (layer != std::numeric_limits<size_t>::max())
+	while (layer != (size_t)-1)
 	{
 		__syncthreads();
 		if (node < layerHeight)
@@ -273,25 +319,48 @@ __global__ void DNN::Utils::backPropRecord(Network* nn)
 }
 
 
-void DNN::Utils::backPropUpdate(Network* nn)
+__global__ void DNN::Utils::backPropUpdate(Network* nn)
 {
 	const size_t& layer = blockIdx.x;
 	const size_t& node = threadIdx.x;
 	const size_t& batchSize = nn->trainBatchSize;
 	const size_t& prevLayerHeight = layer == 0 ? nn->inputHeight : nn->shape[layer - 1];
 
+	printf("BPU thread <%d, %d>\n", (int)layer, (int)node);
 	if (nn->shape[layer] <= node) return;
 
-	float avg_dc_do = 0.f;
+	// dc/db = dc/do
+	float dc_dx = 0.f;
 	for (size_t batch = 0; batch < batchSize; ++batch)
 	{
-		avg_dc_do += nn->activatedOutputs[batch][layer][node];
+		dc_dx += nn->unactivatedOutputs[batch][layer][node];
 	}
-	avg_dc_do /= batchSize;
+	dc_dx /= batchSize;
 
-	// weights
+	// gradient descent 
+	nn->biases[layer][node] -= dc_dx * nn->learningRate;
+
+	// dc/dw = dc/do * prev activated
 	for (size_t weight = 0; weight < prevLayerHeight; weight++)
 	{
-		nn->weights[layer][node][weight] -= avg_dc_do * weight * nn->learningRate;
+		dc_dx = 0.f;
+		if (layer == 0)
+		{
+			for (size_t batch = 0; batch < batchSize; ++batch)
+			{
+				dc_dx += nn->unactivatedOutputs[batch][layer][node] * nn->inputs[batch][weight];
+			}
+		}
+		else
+		{
+			for (size_t batch = 0; batch < batchSize; ++batch)
+			{
+				dc_dx += nn->unactivatedOutputs[batch][layer][node] * nn->activatedOutputs[batch][layer - 1][weight];
+			}
+		}
+		dc_dx /= batchSize;
+
+		// gradient descent 
+		nn->weights[layer][node][weight] -= dc_dx * nn->learningRate;
 	}
 }

@@ -4,13 +4,19 @@ namespace DNN = DeepNeuralNetwork;
 
 int main()
 {
-	auto network = DNN::Network({ 2 }, 2, 16);
+	auto network = DNN::Network({ 1 }, 1, 1, 0.1);
+	network.summary();
 
-	float inputs[] = {
-		5.f,
-		-5.f
-	};
-	network.predict(inputs);
+	for (int i = 0; i <= 100; i++)
+	{
+		float in = randf<-1, 1>();
+		float* pIn = &in;
 
-	printf("(%.3f, %.3f) -> (%.3f, %.3f)\n", inputs[0], inputs[1], network.predictionResult[0], network.predictionResult[1]);
+		printf("\nTRAIN STEP %d - INPUT = %.4f\n", i, in);
+
+		network.train(&pIn, &pIn);
+		network.summary();
+	}
+
+
 }

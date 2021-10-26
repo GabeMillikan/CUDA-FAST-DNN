@@ -1,5 +1,19 @@
 #include "activation.cuh"
 
+const char* Activation::stringifyActivator(const Activator& activator)
+{
+	switch (activator)
+	{
+	default:
+	case Activator::Linear:
+		return "Linear";
+	case Activator::ReLu:
+		return "ReLu";
+	case Activator::Sigmoid:
+		return "Sigmoid";
+	}
+}
+
 __device__ void Activation::activate(const Activator& activator, const float& in, float* out)
 {
 	switch (activator)
@@ -17,13 +31,13 @@ __device__ void Activation::activate(const Activator& activator, const float& in
 	}
 }
 
-void Activation::differentiate(const Activator& activator, const float& in, float* out)
+__device__ void Activation::differentiate(const Activator& activator, const float& in, float* out)
 {
 	switch (activator)
 	{
 	default:
 	case Activator::Linear:
-		*out = in;
+		*out = 1.f;
 		break;
 	case Activator::ReLu:
 		*out = in <= 0 ? 0 : 1;
