@@ -38,6 +38,8 @@ namespace DeepNeuralNetwork {
 
 		float*** unactivatedOutputs;
 		float*** activatedOutputs;
+
+		float* loss;
 	
 	public:
 		float* predictionResult; // READ ONLY!!
@@ -52,8 +54,8 @@ namespace DeepNeuralNetwork {
 		);
 
 		void predict(float* inputs);
-		void train(float** inputs, float** outputs);
-		void summary(bool showParameterValues = true);
+		void train(float** inputs, float** outputs, float* loss = nullptr);
+		void summary(bool showParameterValues = false);
 
 		~Network();
 
