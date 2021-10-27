@@ -267,17 +267,7 @@ __global__ void DNN::Utils::backPropRecord(Network* nn)
 {
 	/*
 	These equations are followed religiously:
-	https://cdn.discordapp.com/attachments/282239317966061568/902381475549282354/342191494872039424.png
-
-	o_{xi} = \sum_{j=1}^{I_{x-1}}w_{xij}a_{(x-1)j}+b_{xi} \\
-	a_{xi} = \sigma(o_{xi}) \\
-	C = \frac{1}{I}\sum_{i=1}^{I_X}(a_{Xi}-t_i)^2 \\
-	\frac{dC}{do_{Xi}} = \frac{2}{I_X}(a_{Xi} - t_{i})\sigma ^ \prime (o_{Xi}) \\
-	\frac{dC}{do_{xi}} = \sum_{j=1}^{I_{x+1}}\frac{dC}{do_{(x+1)j}} \cdot w_{(x+1)ji} \cdot \sigma ^\prime (o_{xi}) \\
-	\frac{do_{xi}}{dw_{xij}} = a_{(x-1)j} \\
-	\frac{do_{xi}}{db_{xi}} = 1 \\
-	\frac{dC}{dw_{xij}} = \frac{dC}{do_{xi}}\cdot \frac{do_{xi}}{dw_{xij}} = \frac{dC}{do_{xi}}\cdot a_{(x-1)j}\\
-	\frac{dC}{db_{xi}} = \frac{dC}{do_{xi}}\cdot \frac{do_{xi}}{db_{xi}} = \frac{dC}{do_{xi}}
+	https://github.com/GabeMillikan/CUDA-FAST-DNN/blob/main/DNN_Math.pdf
 
 	nn->unactivatedOutputs will be used to store dc/do
 	*/
